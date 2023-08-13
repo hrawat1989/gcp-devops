@@ -1,3 +1,3 @@
 provider "github" {
-  token = "YOUR_PERSONAL_ACCESS_TOKEN"
+  token = "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"
 }
