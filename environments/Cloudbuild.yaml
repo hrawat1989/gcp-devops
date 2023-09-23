@@ -17,7 +17,7 @@ steps:
     args:
       [
         "-c",
-        "gcloud secrets versions access 1 --secret=GitHubToken --format='get(payload.data)' | tr '_-' '/+' | base64 -d > token.txt",
+        "gcloud secrets versions access 1 --secret=terraform_gcp_secret --format='get(payload.data)' | tr '_-' '/+' | base64 -d > token.txt",
       ]
 
   - id: "Echo branch name"
