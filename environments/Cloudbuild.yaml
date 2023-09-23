@@ -1,0 +1,112 @@
+# Copyright 2019 Google LLC
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+steps:
+  - id: "Retrieve GitHub token"
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: "bash"
+    args:
+      [
+        "-c",
+        "gcloud secrets versions access 1 --secret=GitHubToken --format='get(payload.data)' | tr '_-' '/+' | base64 -d > token.txt",
+      ]
+
+  - id: "Echo branch name"
+    name: "alpine"
+    entrypoint: "sh"
+    args:
+      - "-c"
+      - |
+        echo "***********************"
+        echo "$BRANCH_NAME"
+        echo "***********************"
+  - id: "Terraform Init"
+    name: "hashicorp/terraform:0.14.8"
+    entrypoint: "sh"
+    args:
+      - "-c"
+      - |
+        echo 'SET GIT CREDS'
+        GitHubToken=$(cat token.txt)
+        git config --global url."https://${terraform_token}@github.com/".insteadOf "https://github.com/"
+        if [ -d "environments/$BRANCH_NAME/" ]; then
+          cd environments/$BRANCH_NAME
+          terraform init
+        else
+          for dir in environments/*/
+          do
+            cd ${dir}
+            env=${dir%*/}
+            env=${env#*/}
+            echo ""
+            echo "*************** TERRAFORM INIT ******************"
+            echo "******* At environment: ${env} ********"
+            echo "*************************************************"
+            terraform init || exit 1
+            cd ../../
+          done
+        fi
+    env:
+      - "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=terraform-serviceaccount@ringed-codex-398512.iam.gserviceaccount.com"
+
+#   - id: "Terraform Plan"
+#     name: "hashicorp/terraform:0.14.8"
+#     entrypoint: "sh"
+#     args:
+#       - "-c"
+#       - |
+#         apk add --update bash
+#         BRANCH_NAME=$BRANCH_NAME ./tfPlan.sh
+#     env:
+#       - "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=service-account-terraform@my-test-project-395013.iam.gserviceaccount.com"
+
+#   - id: "Comment on PR"
+#     # TODO: Replace with ghcli docker image
+#     name: "gcr.io/$PROJECT_ID/github"
+#     entrypoint: "bash"
+#     args:
+#       - "-c"
+#       - |-
+#         exit_code=$(< /workspace/planExitCode.txt)
+#         read -r -d "" gh_comment_template << EOF
+#         <details>
+#           <summary>Terraform Plan Results</summary>
+#           %s
+#         </details>
+#         EOF
+#         gh_comment=$(printf "$$gh_comment_template" "$(cat /workspace/plan.txt)")
+#         if [ -d "environments/$BRANCH_NAME/" ]; then
+#           cat /workspace/plan.txt
+#         else
+#           /usr/bin/gh.bash pr review $_PR_NUMBER -c -b "$$gh_comment"
+#         fi
+#         exit "$exit_code"
+#   - id: "Terraform Apply"
+#     name: "hashicorp/terraform:0.14.8"
+#     entrypoint: "sh"
+#     args:
+#       - "-c"
+#       - |
+#         export GITHUB_TOKEN=$(cat token.txt)
+#         if [ -d "environments/$BRANCH_NAME/" ]; then
+#           cd environments/$BRANCH_NAME
+#           terraform apply -auto-approve /workspace/plan.${BRANCH_NAME}.out
+#         else
+#           echo "***************************** SKIPPING APPLYING *******************************"
+#           echo "Branch '$BRANCH_NAME' does not represent an oficial environment."
+#           echo "*******************************************************************************"
+#         fi
+#     env:
+#       - "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=dbk-iaas-sre-iac-automation@dbk-iaas-sre-iac.iam.gserviceaccount.com"
+
+# timeout: 1800s
+logsBucket: "gs://terraform-log-0987/$REPO_NAME/$BRANCH_NAME"
